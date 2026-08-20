@@ -1,0 +1,91 @@
+<Window x:Class="WhisperDesk.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WhisperDesk" Height="720" Width="920" MinHeight="620" MinWidth="760"
+        WindowStartupLocation="CenterScreen" AllowDrop="True"
+        Drop="Window_Drop" DragOver="Window_DragOver">
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,18">
+            <TextBlock Text="WhisperDesk" FontSize="27" FontWeight="SemiBold" />
+            <TextBlock Text="音声・動画ファイルをここへドロップするか、入力ファイルを選択してください。"
+                       Foreground="#5B6472" Margin="0,5,0,0" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="125"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBlock Text="入力ファイル" VerticalAlignment="Center" />
+            <TextBox x:Name="InputPathBox" Grid.Column="1" Margin="0,0,8,0" IsReadOnly="True" />
+            <Button Grid.Column="2" Content="選択…" Click="BrowseInput_Click" />
+        </Grid>
+
+        <Grid Grid.Row="2" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="125"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBlock Text="出力フォルダー" VerticalAlignment="Center" />
+            <TextBox x:Name="OutputDirectoryBox" Grid.Column="1" Margin="0,0,8,0" />
+            <Button Grid.Column="2" Content="選択…" Click="BrowseOutput_Click" />
+        </Grid>
+
+        <Grid Grid.Row="3" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="125"/><ColumnDefinition Width="2*"/><ColumnDefinition Width="24"/>
+                <ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="24"/>
+                <ColumnDefinition Width="75"/><ColumnDefinition Width="2*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="モデル" VerticalAlignment="Center" />
+            <ComboBox x:Name="ModelCombo" Grid.Column="1" />
+            <TextBlock Grid.Column="3" Text="言語" VerticalAlignment="Center" />
+            <ComboBox x:Name="LanguageCombo" Grid.Column="4">
+                <ComboBoxItem Content="日本語" Tag="ja" IsSelected="True" />
+                <ComboBoxItem Content="自動判定" Tag="auto" />
+            </ComboBox>
+            <TextBlock Grid.Column="6" Text="出力" VerticalAlignment="Center" />
+            <StackPanel Grid.Column="7" Orientation="Horizontal">
+                <CheckBox x:Name="TxtCheck" Content="TXT" IsChecked="True" Margin="0,0,14,0" VerticalAlignment="Center" />
+                <CheckBox x:Name="SrtCheck" Content="SRT" Margin="0,0,14,0" VerticalAlignment="Center" />
+                <CheckBox x:Name="VttCheck" Content="VTT" VerticalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+
+        <Expander Grid.Row="4" Header="実行環境の設定" Margin="0,2,0,12">
+            <Grid Margin="0,10,0,2">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="125"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Text="whisper-cli" VerticalAlignment="Center" />
+                <TextBox x:Name="WhisperPathBox" Grid.Column="1" Margin="0,0,0,7" />
+                <TextBlock Grid.Row="1" Text="FFmpeg" VerticalAlignment="Center" />
+                <TextBox x:Name="FfmpegPathBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,7" />
+                <TextBlock Grid.Row="2" Text="モデルフォルダー" VerticalAlignment="Center" />
+                <TextBox x:Name="ModelDirectoryBox" Grid.Row="2" Grid.Column="1" LostFocus="ModelDirectoryBox_LostFocus" />
+            </Grid>
+        </Expander>
+
+        <Grid Grid.Row="5">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <DockPanel Margin="0,0,0,7">
+                <TextBlock Text="処理ログ" FontWeight="SemiBold" />
+                <TextBlock x:Name="ElapsedText" Text="00:00:00" Foreground="#5B6472" DockPanel.Dock="Right" HorizontalAlignment="Right" />
+            </DockPanel>
+            <TextBox x:Name="LogBox" Grid.Row="1" IsReadOnly="True" AcceptsReturn="True"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                     FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap" />
+        </Grid>
+
+        <Grid Grid.Row="6" Margin="0,15,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <ProgressBar x:Name="ProgressBar" Height="6" VerticalAlignment="Center" IsIndeterminate="False" />
+            <Button x:Name="CancelButton" Grid.Column="1" Content="中止" IsEnabled="False" Click="Cancel_Click" MinWidth="92" />
+            <Button x:Name="StartButton" Grid.Column="2" Content="文字起こしを開始" Click="Start_Click"
+                    MinWidth="160" Background="{StaticResource AccentBrush}" Foreground="White" />
+        </Grid>
+    </Grid>
+</Window>
