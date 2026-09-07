@@ -8,4 +8,7 @@
     <AssemblyName>WhisperDesk</AssemblyName>
     <RootNamespace>WhisperDesk</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
+  </ItemGroup>
 </Project>

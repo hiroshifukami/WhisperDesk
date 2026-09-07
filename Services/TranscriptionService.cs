@@ -25,15 +25,38 @@ public sealed class TranscriptionService
         CancellationToken cancellationToken)
     {
         Validate(request);
-        var stableArgs = request.StableMode
-            ? StableMode.CreateArguments(await ReadHelpAsync(request.WhisperPath, cancellationToken),
-                Path.GetDirectoryName(Path.GetFullPath(request.ModelPath))!, log)
-            : Array.Empty<string>();
-        Directory.CreateDirectory(Path.GetDirectoryName(request.OutputBasePath)!);
-
+        cancellationToken.ThrowIfCancellationRequested();
+        var outputDirectory = Path.GetDirectoryName(Path.GetFullPath(request.OutputBasePath))!;
+        Directory.CreateDirectory(outputDirectory);
+        // CreateNew also reserves this output name across multiple application instances.
+        using var runLog = new RunLog(request.OutputBasePath + ".log", log);
+        log = runLog;
+        var elapsed = Stopwatch.StartNew();
+        var stagingDirectory = Path.Combine(outputDirectory, ".whisperdesk-" + Guid.NewGuid().ToString("N"));
         var temporaryWav = Path.Combine(Path.GetTempPath(), $"WhisperDesk-{Guid.NewGuid():N}.wav");
         try
         {
+            log.Report($"入力: {request.InputPath}");
+            log.Report($"モデル: {request.ModelPath}");
+            log.Report($"CLI: {request.WhisperPath}");
+            log.Report($"出力: {request.OutputBasePath}");
+            log.Report($"安定モード: {request.StableMode}");
+            var stableArgs = request.StableMode
+                ? StableMode.CreateArguments(await ReadHelpAsync(request.WhisperPath, cancellationToken),
+                    Path.GetDirectoryName(Path.GetFullPath(request.ModelPath))!, log)
+                : Array.Empty<string>();
+            var extensions = new List<string>();
+            if (request.OutputTxt) extensions.Add(".txt");
+            if (request.OutputSrt) extensions.Add(".srt");
+            if (request.OutputVtt) extensions.Add(".vtt");
+            foreach (var extension in extensions)
+            {
+                var target = request.OutputBasePath + extension;
+                if (File.Exists(target) || Directory.Exists(target))
+                    throw new IOException($"出力先が既に存在します: {target}。別の出力名で再実行してください。");
+            }
+            Directory.CreateDirectory(stagingDirectory);
+            var stagedOutput = Path.Combine(stagingDirectory, "result");
             log.Report("音声をWhisper用WAVへ変換しています…");
             await RunProcessAsync(request.FfmpegPath,
                 ["-hide_banner", "-y", "-i", request.InputPath, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", temporaryWav],
@@ -45,7 +68,7 @@ public sealed class TranscriptionService
                 "-m", request.ModelPath,
                 "-f", temporaryWav,
                 "-l", request.Language,
-                "-of", request.OutputBasePath
+                "-of", stagedOutput
             };
             if (request.OutputTxt) args.Add("-otxt");
             if (request.OutputSrt) args.Add("-osrt");
@@ -60,12 +83,39 @@ public sealed class TranscriptionService
             {
                 throw new InvalidOperationException(ex.Message + " VAD使用中に失敗しました。処理ログを確認し、モデル破損の場合はsetup-vad.ps1 -Forceで再配置してください。", ex);
             }
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var extension in extensions)
+            {
+                if (!File.Exists(stagedOutput + extension))
+                    throw new IOException($"結果ファイルが生成されませんでした: {extension}。処理ログを確認してください。");
+            }
+            // Empty transcripts are valid for silence. Never overwrite an existing result.
+            foreach (var extension in extensions)
+                File.Move(stagedOutput + extension, request.OutputBasePath + extension, overwrite: false);
             log.Report("文字起こしが完了しました。");
+        }
+        catch (OperationCanceledException)
+        {
+            log.Report("処理を中止しました。");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            log.Report($"エラー: {ex.Message}");
+            throw;
         }
         finally
         {
-            TryDelete(temporaryWav);
+            TryDelete(temporaryWav, log);
+            try
+            {
+                if (Directory.Exists(stagingDirectory)) Directory.Delete(stagingDirectory, recursive: true);
+            }
+            catch (IOException ex) { log.Report($"一時出力の削除に失敗しました: {stagingDirectory}: {ex.Message}"); }
+            catch (UnauthorizedAccessException ex) { log.Report($"一時出力の削除に失敗しました: {stagingDirectory}: {ex.Message}"); }
             _activeProcess = null;
+            elapsed.Stop();
+            log.Report($"総処理時間（変換・保存を含む）: {elapsed.Elapsed}");
         }
     }
 
@@ -98,6 +148,12 @@ public sealed class TranscriptionService
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new InvalidOperationException("whisper-cliの機能確認がタイムアウトしました。実行環境を確認してください。");
+        }
+        finally
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(CancellationToken.None);
+            await Task.WhenAll(stdout, stderr);
         }
     }
 
@@ -148,7 +204,18 @@ public sealed class TranscriptionService
             try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
         });
 
-        await process.WaitForExitAsync(cancellationToken);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        finally
+        {
+            // Cancellation stops waiting, not the OS process. Reap it before deleting WAVs.
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(CancellationToken.None);
+            _activeProcess = null;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
         if (process.ExitCode != 0)
             throw new InvalidOperationException($"外部プログラムが終了コード {process.ExitCode} を返しました: {Path.GetFileName(executable)}");
     }
@@ -162,8 +229,10 @@ public sealed class TranscriptionService
             throw new InvalidOperationException("出力形式を1つ以上選んでください。");
     }
 
-    private static void TryDelete(string path)
+    private static void TryDelete(string path, IProgress<string> log)
     {
-        try { if (File.Exists(path)) File.Delete(path); } catch { }
+        try { if (File.Exists(path)) File.Delete(path); }
+        catch (IOException ex) { log.Report($"一時WAVの削除に失敗しました: {path}: {ex.Message}"); }
+        catch (UnauthorizedAccessException ex) { log.Report($"一時WAVの削除に失敗しました: {path}: {ex.Message}"); }
     }
 }

@@ -18,6 +18,9 @@ public partial class MainWindow : Window
     private AppSettings _settings;
     private CancellationTokenSource? _cancellation;
     private Stopwatch? _stopwatch;
+    private TaskCompletionSource? _runCompletion;
+    private bool _closingAfterRun;
+    private bool _allowClose;
 
     public MainWindow()
     {
@@ -77,6 +80,7 @@ public partial class MainWindow : Window
 
     private void Window_Drop(object sender, DragEventArgs e)
     {
+        if (_runCompletion is not null) return;
         if (e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files)
             SetInput(files[0]);
     }
@@ -90,6 +94,8 @@ public partial class MainWindow : Window
 
     private async void Start_Click(object sender, RoutedEventArgs e)
     {
+        if (_runCompletion is not null) return;
+        _runCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
             var request = BuildRequest();
@@ -105,7 +111,9 @@ public partial class MainWindow : Window
             _timer.Start();
             var progress = new Progress<string>(AppendLog);
             await _transcriptionService.RunAsync(request, progress, _cancellation.Token);
-            MessageBox.Show(this, "文字起こしが完了しました。", "WhisperDesk", MessageBoxButton.OK, MessageBoxImage.Information);
+            StopClock();
+            if (!_closingAfterRun)
+                MessageBox.Show(this, "文字起こしが完了しました。", "WhisperDesk", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (OperationCanceledException)
         {
@@ -113,16 +121,19 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            StopClock();
             AppendLog($"エラー: {ex.Message}");
-            MessageBox.Show(this, ex.Message, "WhisperDesk", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (!_closingAfterRun)
+                MessageBox.Show(this, ex.Message, "WhisperDesk", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
-            _timer.Stop();
-            _stopwatch?.Stop();
+            StopClock();
             _cancellation?.Dispose();
             _cancellation = null;
             SetRunning(false);
+            _runCompletion.TrySetResult();
+            _runCompletion = null;
         }
     }
 
@@ -144,9 +155,11 @@ public partial class MainWindow : Window
     private string CreateUniqueOutputBase(string directory, string inputName)
     {
         var basePath = Path.Combine(directory, inputName + "_transcript");
-        var extensions = new[] { ".txt", ".srt", ".vtt" };
-        if (!extensions.Any(ext => File.Exists(basePath + ext))) return basePath;
-        return basePath + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        var extensions = new[] { ".txt", ".srt", ".vtt", ".log" };
+        var candidate = basePath;
+        while (extensions.Any(ext => File.Exists(candidate + ext) || Directory.Exists(candidate + ext)))
+            candidate = basePath + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + Guid.NewGuid().ToString("N")[..8];
+        return candidate;
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -159,10 +172,22 @@ public partial class MainWindow : Window
 
     private void SetRunning(bool running)
     {
+        InputPanel.IsEnabled = !running;
+        OutputPanel.IsEnabled = !running;
+        RecognitionPanel.IsEnabled = !running;
+        EnvironmentPanel.IsEnabled = !running;
+        AllowDrop = !running;
         StableModeCheck.IsEnabled = !running;
         StartButton.IsEnabled = !running;
         CancelButton.IsEnabled = running;
         ProgressBar.IsIndeterminate = running;
+    }
+
+    private void StopClock()
+    {
+        _timer.Stop();
+        _stopwatch?.Stop();
+        ElapsedText.Text = (_stopwatch?.Elapsed ?? TimeSpan.Zero).ToString(@"hh\:mm\:ss");
     }
 
     private void AppendLog(string line)
@@ -198,18 +223,28 @@ public partial class MainWindow : Window
         _settingsService.Save(_settings);
     }
 
-    protected override void OnClosing(CancelEventArgs e)
+    protected override async void OnClosing(CancelEventArgs e)
     {
-        if (_cancellation is not null)
+        if (_allowClose) { base.OnClosing(e); return; }
+        if (_runCompletion is not null)
         {
+            e.Cancel = true;
+            if (_closingAfterRun) return;
+            var completion = _runCompletion.Task;
             if (MessageBox.Show(this, "処理中です。中止して終了しますか？", "WhisperDesk",
                     MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             {
                 e.Cancel = true;
                 return;
             }
-            _cancellation.Cancel();
+            _closingAfterRun = true;
+            _cancellation?.Cancel();
             _transcriptionService.Cancel();
+            await completion;
+            _allowClose = true;
+            // Queue a fresh close event even when completion was already finished.
+            Dispatcher.BeginInvoke(new Action(Close));
+            return;
         }
         else
         {
