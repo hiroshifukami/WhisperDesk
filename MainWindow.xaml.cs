@@ -37,6 +37,7 @@ public partial class MainWindow : Window
         TxtCheck.IsChecked = _settings.OutputTxt;
         SrtCheck.IsChecked = _settings.OutputSrt;
         VttCheck.IsChecked = _settings.OutputVtt;
+        StableModeCheck.IsChecked = _settings.StableMode;
         SelectLanguage(_settings.Language);
     }
 
@@ -47,7 +48,8 @@ public partial class MainWindow : Window
         if (Directory.Exists(ModelDirectoryBox.Text))
         {
             foreach (var path in Directory.GetFiles(ModelDirectoryBox.Text, "ggml-*.bin").OrderBy(Path.GetFileName))
-                ModelCombo.Items.Add(Path.GetFileName(path));
+                if (!Path.GetFileName(path).StartsWith("ggml-silero-", StringComparison.OrdinalIgnoreCase))
+                    ModelCombo.Items.Add(Path.GetFileName(path));
         }
         ModelCombo.SelectedItem = ModelCombo.Items.Contains(selected) ? selected : ModelCombo.Items.Cast<string>().FirstOrDefault();
     }
@@ -136,7 +138,7 @@ public partial class MainWindow : Window
 
         return new TranscriptionRequest(input, outputBase, WhisperPathBox.Text.Trim(), FfmpegPathBox.Text.Trim(),
             Path.Combine(ModelDirectoryBox.Text.Trim(), model), language,
-            TxtCheck.IsChecked == true, SrtCheck.IsChecked == true, VttCheck.IsChecked == true);
+            TxtCheck.IsChecked == true, SrtCheck.IsChecked == true, VttCheck.IsChecked == true, StableModeCheck.IsChecked == true);
     }
 
     private string CreateUniqueOutputBase(string directory, string inputName)
@@ -157,6 +159,7 @@ public partial class MainWindow : Window
 
     private void SetRunning(bool running)
     {
+        StableModeCheck.IsEnabled = !running;
         StartButton.IsEnabled = !running;
         CancelButton.IsEnabled = running;
         ProgressBar.IsIndeterminate = running;
@@ -189,6 +192,7 @@ public partial class MainWindow : Window
             Language = (LanguageCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "ja",
             OutputTxt = TxtCheck.IsChecked == true,
             OutputSrt = SrtCheck.IsChecked == true,
+            StableMode = StableModeCheck.IsChecked == true,
             OutputVtt = VttCheck.IsChecked == true
         };
         _settingsService.Save(_settings);

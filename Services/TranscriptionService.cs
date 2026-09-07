@@ -12,7 +12,8 @@ public sealed record TranscriptionRequest(
     string Language,
     bool OutputTxt,
     bool OutputSrt,
-    bool OutputVtt);
+    bool OutputVtt,
+    bool StableMode = false);
 
 public sealed class TranscriptionService
 {
@@ -24,6 +25,10 @@ public sealed class TranscriptionService
         CancellationToken cancellationToken)
     {
         Validate(request);
+        var stableArgs = request.StableMode
+            ? StableMode.CreateArguments(await ReadHelpAsync(request.WhisperPath, cancellationToken),
+                Path.GetDirectoryName(Path.GetFullPath(request.ModelPath))!, log)
+            : Array.Empty<string>();
         Directory.CreateDirectory(Path.GetDirectoryName(request.OutputBasePath)!);
 
         var temporaryWav = Path.Combine(Path.GetTempPath(), $"WhisperDesk-{Guid.NewGuid():N}.wav");
@@ -46,13 +51,53 @@ public sealed class TranscriptionService
             if (request.OutputSrt) args.Add("-osrt");
             if (request.OutputVtt) args.Add("-ovtt");
 
-            await RunProcessAsync(request.WhisperPath, args, log, cancellationToken);
+            args.AddRange(stableArgs);
+            try
+            {
+                await RunProcessAsync(request.WhisperPath, args, log, cancellationToken);
+            }
+            catch (InvalidOperationException ex) when (stableArgs.Contains("--vad"))
+            {
+                throw new InvalidOperationException(ex.Message + " VAD使用中に失敗しました。処理ログを確認し、モデル破損の場合はsetup-vad.ps1 -Forceで再配置してください。", ex);
+            }
             log.Report("文字起こしが完了しました。");
         }
         finally
         {
             TryDelete(temporaryWav);
             _activeProcess = null;
+        }
+    }
+
+    private static async Task<string> ReadHelpAsync(string executable, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo(executable)
+            {
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true
+            }
+        };
+        process.StartInfo.ArgumentList.Add("--help");
+        process.Start();
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        using var registration = timeout.Token.Register(() =>
+        {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+        });
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+            // Some CLI versions return a nonzero exit code for --help.
+            return await stdout + "\n" + await stderr;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new InvalidOperationException("whisper-cliの機能確認がタイムアウトしました。実行環境を確認してください。");
         }
     }
 

@@ -56,7 +56,10 @@
             </StackPanel>
         </Grid>
 
-        <Expander Grid.Row="4" Header="実行環境の設定" Margin="0,2,0,12">
+        <StackPanel Grid.Row="4">
+            <CheckBox x:Name="StableModeCheck" Content="安定モード（反復を抑制）" Margin="0,0,0,8"
+                      ToolTip="前の認識結果を引き継がず、対応CLIとモデルがある場合はVADも使用します。固有名詞の連続性が弱くなる場合があります。" />
+        <Expander Header="実行環境の設定" Margin="0,2,0,12">
             <Grid Margin="0,10,0,2">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="125"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -68,6 +71,7 @@
                 <TextBox x:Name="ModelDirectoryBox" Grid.Row="2" Grid.Column="1" LostFocus="ModelDirectoryBox_LostFocus" />
             </Grid>
         </Expander>
+        </StackPanel>
 
         <Grid Grid.Row="5">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
