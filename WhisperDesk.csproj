@@ -7,6 +7,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>WhisperDesk</AssemblyName>
     <RootNamespace>WhisperDesk</RootNamespace>
+    <Version>0.1.0</Version>
+    <Product>WhisperDesk</Product>
+    <Description>Windows GUI for local transcription with whisper.cpp</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />

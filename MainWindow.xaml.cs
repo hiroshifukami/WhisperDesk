@@ -243,7 +243,7 @@ public partial class MainWindow : Window
             await completion;
             _allowClose = true;
             // Queue a fresh close event even when completion was already finished.
-            Dispatcher.BeginInvoke(new Action(Close));
+            _ = Dispatcher.BeginInvoke(new Action(Close));
             return;
         }
         else

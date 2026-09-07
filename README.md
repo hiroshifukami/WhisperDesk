@@ -2,6 +2,17 @@
 
 Windows上のVulkan対応`whisper.cpp`をGUIから利用する、ローカル文字起こしツールです。
 
+## ダウンロードして使う
+
+[Releases](https://github.com/hiroshifukami/WhisperDesk/releases)の`WhisperDesk-v0.1.0-win-x64.zip`をダウンロードし、展開してください。
+**初回版は、whisper.cpp・FFmpeg・モデルを自分で用意できる人向けです。これらはZIPに含まれません。**
+Windows 11 x64で動作確認しています。利用者には.NET SDK不要です。
+初期パスは開発環境の例なので、自分の配置に合わせて設定してください。
+
+**[初めての導入手順](GETTING_STARTED.md)** · [リリースノート](RELEASE_NOTES.md)
+
+WhisperDesk本体は[MITライセンス](LICENSE)です。[同梱ランタイムの通知](THIRD_PARTY_NOTICES.md)も参照してください。
+
 ## 前提
 
 - Windows 11
@@ -28,6 +39,8 @@ PowerShellで次を実行します。
 既にWindows側で`ffmpeg.exe`がPATHに入っていれば、変更は行いません。
 
 ## 2. ビルド
+
+配布ZIPを使う方はこの手順を省略できます。以下はソースからビルドする開発者向けです。
 
 このフォルダーでPowerShellを開きます。スクリプトの実行を許可していない環境では、このプロセスだけ許可します。
 
